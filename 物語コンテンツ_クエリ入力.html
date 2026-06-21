@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>物語コンテンツ ― SPARQL を自分で書く</title>
+<script src="https://rdf.js.org/comunica-browser/versions/latest/engines/query-sparql/comunica-browser.js"></script>
+<style>
+  :root{
+    --ink:#1c1a17; --ink-soft:#5b554c; --line:#e3ddd2;
+    --paper:#fbfaf7; --panel:#ffffff;
+    --amber-soft:#fdf3dc; --amber-line:#e9cf91;
+    --indigo:#3a3f8f; --indigo-soft:#eceefb;
+    --code-bg:#1d1b26; --code-ink:#e8e6f0; --err:#9a2b1e;
+    --mono:"SFMono-Regular",Menlo,Consolas,"Yu Gothic","Hiragino Sans",monospace;
+    --sans:"Hiragino Kaku Gothic ProN","Yu Gothic",-apple-system,system-ui,"Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1140px;margin:0 auto;padding:32px 24px 80px;}
+  header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:22px;}
+  h1{font-size:21px;margin:0 0 2px;}
+  .sub{color:var(--ink-soft);font-size:13px;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:26px;align-items:start;}
+  @media(max-width:840px){.layout{grid-template-columns:1fr}}
+  label.section{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px;font-weight:600;}
+  textarea{width:100%;min-height:180px;background:var(--code-bg);color:var(--code-ink);border:none;border-radius:8px;padding:16px;font-family:var(--mono);font-size:13.5px;line-height:1.65;resize:vertical;tab-size:2;}
+  textarea:focus{outline:2px solid var(--indigo);outline-offset:2px;}
+  .controls{display:flex;align-items:center;gap:12px;margin:12px 0 4px;flex-wrap:wrap;}
+  button.run{background:var(--indigo);color:#fff;border:none;border-radius:7px;padding:9px 22px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+  button.run:hover{background:#2d3275;}
+  button.run:disabled{opacity:.5;cursor:wait;}
+  .hintkey{font-size:12px;color:var(--ink-soft);}
+  .status{font-size:12.5px;color:var(--ink-soft);}
+  .status.err{color:var(--err);font-weight:600;}
+  .examples{margin-top:22px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--ink);transition:.12s;}
+  .chip:hover{border-color:var(--indigo);color:var(--indigo);}
+  .results{margin-top:26px;}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;}
+  th{text-align:left;background:var(--indigo-soft);color:var(--indigo);font-weight:600;padding:8px 12px;border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;}
+  td{padding:7px 12px;border:1px solid var(--line);}
+  .chip-val{display:inline-block;background:var(--amber-soft);border:1px solid var(--amber-line);border-radius:5px;padding:2px 9px;font-size:13.5px;}
+  .bool{display:inline-block;border-radius:8px;padding:6px 18px;font-size:16px;font-weight:600;}
+  .bool.t{background:#e6f4ea;border:1px solid #9ed3b0;color:#1e6b3a;}
+  .bool.f{background:#fbe9e7;border:1px solid #e3a9a0;color:#9a2b1e;}
+  tr:nth-child(even) td{background:#faf8f4;}
+  .empty{color:var(--ink-soft);font-size:13px;}
+  aside{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;position:sticky;top:24px;}
+  aside h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 10px;}
+  .rg{margin-bottom:14px;}
+  .rg .gl{font-size:12px;color:var(--indigo);font-weight:600;margin-bottom:5px;font-family:var(--mono);}
+  .ent{display:inline-block;background:var(--amber-soft);border:1px solid var(--amber-line);color:var(--ink);border-radius:5px;padding:2px 8px;margin:0 4px 4px 0;font-size:12.5px;cursor:pointer;font-family:var(--mono);}
+  .ent:hover{background:#fbe9c0;}
+  .hint{font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>物語コンテンツ ― SPARQL を自分で書く</h1>
+    <div class="sub">下の欄に質問（SPARQL）を書いて「実行」を押すと、エンジンがあなたのデータを調べて答えます。</div>
+  </header>
+  <div class="layout">
+    <main>
+      <label class="section" for="q">質問（SPARQL）</label>
+      <textarea id="q" spellcheck="false"></textarea>
+      <div class="controls">
+        <button class="run" id="run">実行</button>
+        <span class="hintkey">（Ctrl / ⌘ + Enter でも実行）</span>
+        <span class="status" id="status">エンジンを読み込み中…</span>
+      </div>
+      <div class="examples">
+        <label class="section">例（クリックで欄に入ります。そこから書き換えて試せます）</label>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="results">
+        <label class="section">答え</label>
+        <div id="out"><div class="empty">まだ実行していません。</div></div>
+      </div>
+    </main>
+    <aside>
+      <h2>使える名前</h2>
+      <div class="rg"><div class="gl">プロパティ</div>
+        <span class="ent" data-i="p:表現要素">p:表現要素</span>
+        <span class="ent" data-i="p:提供形態">p:提供形態</span>
+        <span class="ent" data-i="rdfs:subClassOf">rdfs:subClassOf</span>
+        <span class="ent" data-i="rdfs:label">rdfs:label</span>
+      </div>
+      <div class="rg"><div class="gl">コンテンツ</div>
+        <span class="ent" data-i="c:物語コンテンツ">c:物語コンテンツ</span>
+        <span class="ent" data-i="c:小説">c:小説</span><span class="ent" data-i="c:コミック">c:コミック</span>
+        <span class="ent" data-i="c:ドラマ">c:ドラマ</span><span class="ent" data-i="c:映画">c:映画</span>
+      </div>
+      <div class="rg"><div class="gl">表現要素</div>
+        <span class="ent" data-i="c:文章">c:文章</span><span class="ent" data-i="c:絵">c:絵</span>
+        <span class="ent" data-i="c:映像">c:映像</span><span class="ent" data-i="c:音声">c:音声</span>
+      </div>
+      <div class="rg"><div class="gl">提供形態</div>
+        <span class="ent" data-i="c:出版">c:出版</span><span class="ent" data-i="c:放送">c:放送</span>
+        <span class="ent" data-i="c:興行">c:興行</span><span class="ent" data-i="c:配信">c:配信</span>
+      </div>
+      <div class="hint">名前をクリックすると、質問欄のカーソル位置に差し込まれます。</div>
+    </aside>
+  </div>
+</div>
+<script>
+const C="http://example.com/class/", P_="http://example.com/property/";
+const TTL=`<http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://www.w3.org/2000/01/rdf-schema#label> "subClassOf"@ja. 
+<http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://www.w3.org/2000/01/rdf-schema#label> "subClassOf"@en. 
+<http://example.com/class/Any> <http://www.w3.org/2000/01/rdf-schema#label> "Any"@ja. 
+<http://example.com/class/物語コンテンツ> <http://www.w3.org/2000/01/rdf-schema#label> "物語コンテンツ"@ja. 
+<http://example.com/class/物語コンテンツ> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/Any>. 
+<http://example.com/class/Any> <http://www.w3.org/2000/01/rdf-schema#label> "Any"@ja. 
+<http://example.com/class/小説> <http://www.w3.org/2000/01/rdf-schema#label> "小説"@ja. 
+<http://example.com/class/小説> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/物語コンテンツ>. 
+<http://example.com/class/コミック> <http://www.w3.org/2000/01/rdf-schema#label> "コミック"@ja. 
+<http://example.com/class/コミック> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/物語コンテンツ>. 
+<http://example.com/class/ドラマ> <http://www.w3.org/2000/01/rdf-schema#label> "ドラマ"@ja. 
+<http://example.com/class/ドラマ> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/物語コンテンツ>. 
+<http://example.com/class/映画> <http://www.w3.org/2000/01/rdf-schema#label> "映画"@ja. 
+<http://example.com/class/映画> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/物語コンテンツ>. 
+<http://example.com/class/表現要素> <http://www.w3.org/2000/01/rdf-schema#label> "表現要素"@ja. 
+<http://example.com/class/表現要素> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/Any>. 
+<http://example.com/class/Any> <http://www.w3.org/2000/01/rdf-schema#label> "Any"@ja. 
+<http://example.com/class/文章> <http://www.w3.org/2000/01/rdf-schema#label> "文章"@ja. 
+<http://example.com/class/文章> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/表現要素>. 
+<http://example.com/class/絵> <http://www.w3.org/2000/01/rdf-schema#label> "絵"@ja. 
+<http://example.com/class/絵> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/表現要素>. 
+<http://example.com/class/映像> <http://www.w3.org/2000/01/rdf-schema#label> "映像"@ja. 
+<http://example.com/class/映像> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/表現要素>. 
+<http://example.com/class/提供形態> <http://www.w3.org/2000/01/rdf-schema#label> "提供形態"@ja. 
+<http://example.com/class/提供形態> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/Any>. 
+<http://example.com/class/Any> <http://www.w3.org/2000/01/rdf-schema#label> "Any"@ja. 
+<http://example.com/class/出版> <http://www.w3.org/2000/01/rdf-schema#label> "出版"@ja. 
+<http://example.com/class/出版> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/提供形態>. 
+<http://example.com/class/放送> <http://www.w3.org/2000/01/rdf-schema#label> "放送"@ja. 
+<http://example.com/class/放送> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/提供形態>. 
+<http://example.com/class/興行> <http://www.w3.org/2000/01/rdf-schema#label> "興行"@ja. 
+<http://example.com/class/興行> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/提供形態>. 
+<http://example.com/class/配信> <http://www.w3.org/2000/01/rdf-schema#label> "配信"@ja. 
+<http://example.com/class/配信> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/提供形態>. 
+<http://example.com/class/音声> <http://www.w3.org/2000/01/rdf-schema#label> "音声"@ja. 
+<http://example.com/class/音声> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.com/class/表現要素>. 
+<http://example.com/property/表現要素> <http://www.w3.org/2000/01/rdf-schema#label> "表現要素"@ja. 
+<http://example.com/property/表現要素> <http://www.w3.org/2000/01/rdf-schema#label> "表現要素"@en. 
+<http://example.com/class/物語コンテンツ> <http://example.com/property/表現要素> <http://example.com/class/表現要素>. 
+<http://example.com/property/提供形態> <http://www.w3.org/2000/01/rdf-schema#label> "提供形態"@ja. 
+<http://example.com/property/提供形態> <http://www.w3.org/2000/01/rdf-schema#label> "提供形態"@en. 
+<http://example.com/class/物語コンテンツ> <http://example.com/property/提供形態> <http://example.com/class/提供形態>. 
+<http://example.com/property/表現要素> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/表現要素>. 
+<http://example.com/class/小説> <http://example.com/property/表現要素> <http://example.com/class/文章>. 
+<http://example.com/property/提供形態> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/提供形態>. 
+<http://example.com/class/小説> <http://example.com/property/提供形態> <http://example.com/class/出版>. 
+<http://example.com/class/小説> <http://example.com/property/提供形態> <http://example.com/class/配信>. 
+<http://example.com/property/表現要素> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/表現要素>. 
+<http://example.com/class/コミック> <http://example.com/property/表現要素> <http://example.com/class/絵>. 
+<http://example.com/class/コミック> <http://example.com/property/表現要素> <http://example.com/class/文章>. 
+<http://example.com/property/提供形態> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/提供形態>. 
+<http://example.com/class/コミック> <http://example.com/property/提供形態> <http://example.com/class/出版>. 
+<http://example.com/class/コミック> <http://example.com/property/提供形態> <http://example.com/class/配信>. 
+<http://example.com/property/表現要素> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/表現要素>. 
+<http://example.com/class/ドラマ> <http://example.com/property/表現要素> <http://example.com/class/映像>. 
+<http://example.com/class/ドラマ> <http://example.com/property/表現要素> <http://example.com/class/音声>. 
+<http://example.com/property/提供形態> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/提供形態>. 
+<http://example.com/class/ドラマ> <http://example.com/property/提供形態> <http://example.com/class/放送>. 
+<http://example.com/class/ドラマ> <http://example.com/property/提供形態> <http://example.com/class/配信>. 
+<http://example.com/property/表現要素> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/表現要素>. 
+<http://example.com/class/映画> <http://example.com/property/表現要素> <http://example.com/class/映像>. 
+<http://example.com/class/映画> <http://example.com/property/表現要素> <http://example.com/class/音声>. 
+<http://example.com/property/提供形態> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.com/property/提供形態>. 
+<http://example.com/class/映画> <http://example.com/property/提供形態> <http://example.com/class/興行>. 
+<http://example.com/class/映画> <http://example.com/property/提供形態> <http://example.com/class/配信>.`;
+const PREFIX=`PREFIX c: <http://example.com/class/>
+PREFIX p: <http://example.com/property/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+`;
+const EXAMPLES=[
+ {t:"映像を使うコンテンツ", q:`SELECT ?名前 WHERE {
+  ?x p:表現要素 c:映像 ;
+     rdfs:label ?名前 .
+}`},
+ {t:"物語コンテンツの種類", q:`SELECT ?名前 WHERE {
+  ?x rdfs:subClassOf c:物語コンテンツ ;
+     rdfs:label ?名前 .
+}`},
+ {t:"各コンテンツの提供形態", q:`SELECT ?コンテンツ ?提供形態 WHERE {
+  ?x rdfs:subClassOf c:物語コンテンツ ;
+     rdfs:label ?コンテンツ ;
+     p:提供形態 ?d .
+  ?d rdfs:label ?提供形態 .
+}`},
+ {t:"映画は興行で届く？", q:`ASK {
+  c:映画 p:提供形態 c:興行 .
+}`},
+];
+const qEl=document.getElementById("q"), statusEl=document.getElementById("status"),
+      runEl=document.getElementById("run"), outEl=document.getElementById("out");
+qEl.value=PREFIX+EXAMPLES[0].q;
+const chips=document.getElementById("chips");
+EXAMPLES.forEach(ex=>{const b=document.createElement("button");b.className="chip";b.textContent=ex.t;
+  b.onclick=()=>{qEl.value=PREFIX+ex.q;qEl.focus();};chips.appendChild(b);});
+document.querySelectorAll("[data-i]").forEach(el=>{el.addEventListener("click",()=>{
+  const ins=el.getAttribute("data-i")+" ";const s=qEl.selectionStart,e=qEl.selectionEnd;
+  qEl.value=qEl.value.slice(0,s)+ins+qEl.value.slice(e);qEl.selectionStart=qEl.selectionEnd=s+ins.length;qEl.focus();});});
+const short=t=>{const v=t.value;if(t.termType==="NamedNode"){if(v.startsWith(C))return"c:"+v.slice(C.length);if(v.startsWith(P_))return"p:"+v.slice(P_.length);}return v;};
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+let engine=null;
+runEl.disabled=true;
+window.addEventListener("load",()=>setTimeout(()=>{
+  if(typeof Comunica==="undefined"||!Comunica.QueryEngine){
+    statusEl.textContent="エンジンの読み込みに失敗（ネット接続が必要です）";statusEl.classList.add("err");return;}
+  engine=new Comunica.QueryEngine();statusEl.textContent="準備完了。";runEl.disabled=false;},300));
+const source=[{type:"serialized",value:TTL,mediaType:"text/turtle",baseIRI:"http://example.com/"}];
+async function execute(){
+  if(!engine)return;const query=qEl.value;
+  statusEl.classList.remove("err");statusEl.textContent="実行中…";runEl.disabled=true;outEl.innerHTML="";
+  try{
+    const form=(query.replace(/PREFIX[^\n]*\n/gi,"").trim().match(/^\s*(\w+)/)||[])[1]||"";
+    if(/^ASK$/i.test(form)){
+      const ok=await engine.queryBoolean(query,{sources:source});
+      outEl.innerHTML=`<span class="bool ${ok?'t':'f'}">${ok?'はい（true）':'いいえ（false）'}</span>`;
+    }else{
+      const bs=await (await engine.queryBindings(query,{sources:source})).toArray();
+      outEl.innerHTML=renderBindings(bs);
+    }
+    statusEl.textContent="完了。";
+  }catch(err){outEl.innerHTML="";statusEl.textContent="エラー: "+(err.message||err);statusEl.classList.add("err");}
+  finally{runEl.disabled=false;}
+}
+runEl.onclick=execute;
+qEl.addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")execute();});
+function renderBindings(bs){
+  if(!bs.length)return '<div class="empty">該当なし（0件）。</div>';
+  const cols=[];bs.forEach(b=>{for(const[k]of b){if(!cols.includes(k.value))cols.push(k.value);}});
+  if(cols.length===1){const c=cols[0];
+    return '<div class="chips">'+bs.map(b=>{const t=b.get(c);return t?`<span class="chip-val">${esc(short(t))}</span>`:"";}).join("")+'</div>';}
+  let h="<table><thead><tr>"+cols.map(c=>`<th>?${esc(c)}</th>`).join("")+"</tr></thead><tbody>";
+  bs.forEach(b=>{h+="<tr>"+cols.map(c=>{const t=b.get(c);return t?`<td><span class="chip-val">${esc(short(t))}</span></td>`:"<td></td>";}).join("")+"</tr>";});
+  return h+"</tbody></table>";
+}
+</script>
+</body>
+</html>
